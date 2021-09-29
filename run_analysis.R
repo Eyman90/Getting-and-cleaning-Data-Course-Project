@@ -1,116 +1,74 @@
-###########################################################################################################################################
-# Step 1: Merge the training and the test sets to create one data set.
-###########################################################################################################################################
+# run_analysis.R
 
-# Set WD to import files:
+#0. prepare LIBs
+install.packages("reshape2")
+library(reshape2)
+
+
+#1. get dataset from web
+rawDataDir <- "./rawData"
+rawDataUrl <- "https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip"
+rawDataFilename <- "rawData.zip"
+rawDataDFn <- paste(rawDataDir, "/", "rawData.zip", sep = "")
+dataDir <- "./data"
+
+if (!file.exists(rawDataDir)) {
+  dir.create(rawDataDir)
+  download.file(url = rawDataUrl, destfile = rawDataDFn)
+}
+if (!file.exists(dataDir)) {
+  dir.create(dataDir)
+  unzip(zipfile = rawDataDFn, exdir = dataDir)
+}
+
+
+#2. merge {train, test} data set
+# refer: http://archive.ics.uci.edu/ml/datasets/Human+Activity+Recognition+Using+Smartphones
+# train data
+x_train <- read.table(paste(sep = "", dataDir, "/UCI HAR Dataset/train/X_train.txt"))
+y_train <- read.table(paste(sep = "", dataDir, "/UCI HAR Dataset/train/Y_train.txt"))
+s_train <- read.table(paste(sep = "", dataDir, "/UCI HAR Dataset/train/subject_train.txt"))
+
+# test data
+x_test <- read.table(paste(sep = "", dataDir, "/UCI HAR Dataset/test/X_test.txt"))
+y_test <- read.table(paste(sep = "", dataDir, "/UCI HAR Dataset/test/Y_test.txt"))
+s_test <- read.table(paste(sep = "", dataDir, "/UCI HAR Dataset/test/subject_test.txt"))
+
+# merge {train, test} data
+x_data <- rbind(x_train, x_test)
+y_data <- rbind(y_train, y_test)
+s_data <- rbind(s_train, s_test)
+
+
+#3. load feature & activity info
+# feature info
+feature <- read.table(paste(sep = "", dataDir, "/UCI HAR Dataset/features.txt"))
+
+# activity labels
+a_label <- read.table(paste(sep = "", dataDir, "/UCI HAR Dataset/activity_labels.txt"))
+a_label[,2] <- as.character(a_label[,2])
+
+# extract feature cols & names named 'mean, std'
+selectedCols <- grep("-(mean|std).*", as.character(feature[,2]))
+selectedColNames <- feature[selectedCols, 2]
+selectedColNames <- gsub("-mean", "Mean", selectedColNames)
+selectedColNames <- gsub("-std", "Std", selectedColNames)
+selectedColNames <- gsub("[-()]", "", selectedColNames)
+
+
+#4. extract data by cols & using descriptive name
+x_data <- x_data[selectedCols]
+allData <- cbind(s_data, y_data, x_data)
+colnames(allData) <- c("Subject", "Activity", selectedColNames)
+
+allData$Activity <- factor(allData$Activity, levels = a_label[,1], labels = a_label[,2])
+allData$Subject <- as.factor(allData$Subject)
+
+
+#5. generate tidy data set
+meltedData <- melt(allData, id = c("Subject", "Activity"))
+tidyData <- dcast(meltedData, Subject + Activity ~ variable, mean)
+
+write.table(tidyData, "./tidy_dataset.txt", row.names = FALSE, quote = FALSE)
+
 getwd()
-mywd <- "C:/Users/sebas/Documents/R-Projects/Coursera - getting and cleaning data 1"
-setwd(mywd)
-getwd()
-
-
-# 1.1 Read files
-
-# 1.1.1  Read training tables:
-x_train <- read.table("X_train.txt")
-y_train <- read.table("y_train.txt")
-subject_train <- read.table("subject_train.txt")
-
-dim(x_train)
-dim(y_train)
-dim(subject_train)
-
-# 1.1.2 Read test tables:
-x_test <- read.table("X_test.txt")
-y_test <- read.table("y_test.txt")
-subject_test <- read.table("subject_test.txt")
-
-dim(x_test)
-dim(y_test)
-dim(subject_test)
-
-# 1.1.3 Read features vector:
-features <- read.table("features.txt")
-dim(features)
-
-# 1.1.4 Read activity labels:
-activityLabels = read.table("activity_labels.txt")
-dim(activityLabels)
-
-
-# 1.2 Assigning column names:
-
-colnames(x_train) <- features[,2]
-colnames(y_train) <-"activityId"
-colnames(subject_train) <- "subjectId"
-
-colnames(x_test) <- features[,2] 
-colnames(y_test) <- "activityId"
-colnames(subject_test) <- "subjectId"
-
-colnames(activityLabels) <- c('activityId','activityType')
-
-
-#1.3 Merging all data in one set:
-
-total_train <- cbind(y_train, subject_train, x_train)
-total_test <- cbind(y_test, subject_test, x_test)
-FitData <- rbind(total_train, total_test)
-
-dim(FitData)
-#Health Check: 10299   563
-
-###########################################################################################################################################
-# Step 2: Extract only the measurements on the mean and standard deviation for each measurement. 
-###########################################################################################################################################
-
-#2.1 Reading column names:
-
-colNames <- colnames(FitData)
-
-#2.2 Create vector for defining ID, mean and standard deviation:
-
-mean_and_std <- (grepl("activityId" , colNames) | 
-                   grepl("subjectId" , colNames) | 
-                   grepl("mean.." , colNames) | 
-                   grepl("std.." , colNames) 
-)
-
-mean_and_std
-
-#2.3 Making nessesary subset from FitData:
-
-Subset_meanSD <- FitData[ , mean_and_std == TRUE]
-Subset_meanSD
-
-dim(Subset_meanSD)
-
-###########################################################################################################################################
-#Step 3: Use descriptive activity names to name the activities in the data set
-###########################################################################################################################################
-
-setWithActivityNames <- merge(Subset_meanSD, activityLabels,
-                              by='activityId',
-                              all.x=TRUE)
-
-dim(setWithActivityNames)
-
-###########################################################################################################################################
-# Step 4: Label dataset appropriately with descriptive variable names. 
-###########################################################################################################################################
-#Done in previous steps, see 1.3,2.2 and 2.3!
-
-###########################################################################################################################################
-# Step 5: Create a second independent dataset from the data in step 4 with the average of each variable for each activity and each subject.
-###########################################################################################################################################
-
-#5.1 Making a second tidy data set
-
-secTidySet <- aggregate(. ~subjectId + activityId, setWithActivityNames, mean)
-secTidySet <- secTidySet[order(secTidySet$subjectId, secTidySet$activityId),]
-
-dim(secTidySet)
-View(secTidySet)
-#5.2 Writing second tidy data set in txt file
-
-write.table(secTidySet, "secTidySet.txt", row.name=FALSE)
